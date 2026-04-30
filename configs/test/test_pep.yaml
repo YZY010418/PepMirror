@@ -1,0 +1,11 @@
+dataset:
+  test:
+    class: PeptideDataset
+    mmap_dir: ./datasets/peptide/LNR/processed
+
+dataloader:
+  num_workers: 4
+  batch_size: 8
+
+n_samples: 100
+n_cycles: 0

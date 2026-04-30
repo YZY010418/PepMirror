@@ -1,0 +1,99 @@
+dataloader:
+  train:
+    num_workers: 16
+    shuffle: true
+  valid:
+    num_workers: 8
+dataset:
+  train:
+  - class: DynamicBatchWrapper
+    complexity: n*n
+    dataset:
+      class: MixDatasetWrapper
+      datasets:
+      - class: PeptideDataset
+        cluster: ../UniMoMo_PepBench_Original/datasets/peptide/pepbench/train.cluster
+        mmap_dir: ../UniMoMo_PepBench_Original/datasets/peptide/pepbench/processed/
+        specify_index: ../UniMoMo_PepBench_Original/datasets/peptide/pepbench/processed/train_index.txt
+      - class: PeptideDataset
+        mmap_dir: ../UniMoMo_PepBench_Original/datasets/peptide/ProtFrag/processed
+    n_use_max_in_batch: true
+    ubound_per_batch: 12000000
+  valid:
+  - class: DynamicBatchWrapper
+    complexity: n*n
+    dataset:
+      class: PeptideDataset
+      mmap_dir: ../UniMoMo_PepBench_Original/datasets/peptide/pepbench/processed
+      specify_index: ../UniMoMo_PepBench_Original/datasets/peptide/pepbench/processed/valid_index.txt
+    n_use_max_in_batch: true
+    ubound_per_batch: 12000000
+load_ckpt: ''
+model:
+  class: CondIterAutoEncoder
+  coord_noise_scale: 1.0
+  decode_mask_ratio: 0.0
+  decoder_opt:
+    axial_type: cross
+    cutoff: 10.0
+    efficient: false
+    n_head: 8
+    n_layers: 6
+    n_rbf: 64
+    pre_norm: true
+    use_edge_feat: true
+    vector_act: layernorm
+  decoder_type: AFIEPT
+  discrete_timestep: false
+  edge_size: 64
+  embed_size: 512
+  encoder_opt:
+    axial_type: cross
+    cutoff: 10.0
+    efficient: false
+    n_head: 8
+    n_layers: 6
+    n_rbf: 64
+    pre_norm: true
+    use_edge_feat: true
+    vector_act: layernorm
+  encoder_type: AFIEPT
+  hidden_size: 512
+  k_neighbors: 9
+  kl_on_pocket: false
+  latent_size: 8
+  loss_weights:
+    Zh_kl_loss: 0.6
+    Zx_kl_loss: 0.8
+    atom_coord_loss: 1.0
+    block_type_loss: 1.0
+    bond_length_loss: 0.0
+    bond_loss: 0.5
+    contrastive_loss: 0.0
+    local_distance_loss: 0.5
+  pocket_mask_ratio: 0.05
+  prior_coord_std: 1.0
+trainer:
+  class: IterAETrainer
+  config:
+    grad_clip: 1.0
+    logger: tensorboard
+    max_epoch: 250
+    metric_min_better: true
+    optimizer:
+      class: AdamW
+      lr: 0.0001
+    patience: 10
+    proj_name: PepMirror
+    save_dir: ./ckpts/unimomo_cross/AE_unimomo_cross
+    save_topk: 10
+    scheduler:
+      class: ReduceLROnPlateau
+      factor: 0.8
+      frequency: val_epoch
+      min_lr: 5.0e-06
+      mode: min
+      patience: 5
+    val_freq: 10
+    warmup: 2000
+  criterion: loss

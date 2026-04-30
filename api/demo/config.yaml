@@ -1,0 +1,19 @@
+dataset:
+  pdb_paths:
+    - ./api/demo/7mdp_chothia.pdb
+  tgt_chains:
+    - A
+  lig_chains:
+    - HI
+
+templates:
+  - class: LinearPeptide
+    size_min: 10
+    size_max: 12
+  - class: Antibody
+    cdr_type: HCDR3
+  - class: Molecule
+
+
+batch_size: 8
+n_samples: 20  # 20 candidates for each complex
