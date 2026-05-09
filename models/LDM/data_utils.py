@@ -19,9 +19,13 @@ from data.bioparse.writer.rdkit_mol_to_sdf import rdkit_mol_to_sdf
 from data.bioparse.parser.pdb_to_complex import pdb_to_complex
 from data.bioparse.parser.sdf_to_complex import sdf_to_complex
 from data.base import transform_data
-from evaluation.geom.check_twisted_bond import check_twisted_bond
 from utils.chem_utils import valence_check, cycle_check, connect_fragments
 from utils.logger import print_log
+
+try:
+    from evaluation.geom.check_twisted_bond import check_twisted_bond
+except ModuleNotFoundError:
+    check_twisted_bond = None
 
 
 @dataclass
@@ -206,6 +210,10 @@ def validate_small_mol(mol, smiles, coords, expect_atom_num=None):
     # validate bond length and angles. As we are predicting bonds by model,
     # there might be failed cases with many abnormal bond length and angles
     # between fragments. Such results should be discarded.
+    if check_twisted_bond is None:
+        print_log('Skipping small-molecule geometry validation: evaluation.geom is unavailable.', level='WARN')
+        return True
+
     (num_twist_bond, num_total_bond), (num_twist_angle, num_total_angle) = check_twisted_bond(mol, coords)
     rel_bond, rel_angle = num_twist_bond / mol_size, num_twist_angle / mol_size
     print_log(f'twist bond: {num_twist_bond}/{num_total_bond}, twist angle: {num_twist_angle}/{num_total_angle}, mol size: {mol_size}', level='DEBUG')

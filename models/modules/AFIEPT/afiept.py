@@ -45,8 +45,15 @@ class AxialFeatureConstructor(nn.Module):
             self.out_type = 'vector'
             self.out_mul = 4
             self._construct = self._construct_threemix
+        elif axial_type == 'None':
+            self.out_type = 'None'
+            self.out_mul = 1
+            self._construct = self._construct_none
         else:
             raise ValueError(f'Unknown axial_type: {axial_type}')
+
+    def _construct_none(self, V):
+        return V
     
     def _construct_cross(self, V):
         D = V.shape[-1] 
@@ -239,8 +246,8 @@ class Transformer(nn.Module):
         edge_vecs = edge_vec.unsqueeze(-1) * equiv_feat.unsqueeze(-2) # [Ne, 3, d_hidden]
         H = self.node_mlp(torch.cat([H, scatter_sum(edge_scas, unit_row, dim_size=H.shape[0], dim=0)], dim=-1))
         V = scatter_mean(edge_vecs, unit_row, dim_size=H.shape[0], dim=0)
-        axial_feature = self.axial_constructor(V) # construct the feature anyway to get some label
         if self.axial_position == 'GNN' or self.axial_position == 'Both':
+            axial_feature = self.axial_constructor(V) # construct the feature anyway to get some label
             if self.axial_constructor.out_type == 'vector':
                 V = torch.cat([V, axial_feature], dim = -1).contiguous()
                 V = self.mixing_axial(V)
@@ -417,9 +424,9 @@ class GVPFFNLayer(nn.Module):
         self.use_axial_ffn = self.axial_position in ['FFN','Both']
 
         if self.use_axial_ffn and self.axial_constructor.out_type == 'vector':
-            self.linear_v = nn.Linear(d_hidden * self.axial_constructor.out_mul, d_hidden + self.d_output, bias=False
+            self.linear_v = nn.Linear(d_hidden * self.axial_constructor.out_mul, d_hidden + self.d_output, bias=False)
         else:
-            self.linear_v = nn.Linear(d_hidden, d_hidden + self.d_output, bias=False
+            self.linear_v = nn.Linear(d_hidden, d_hidden + self.d_output, bias=False)
         
         if self.use_axial_ffn and self.axial_constructor.out_type == 'scalar':
             self.ffn_mlp = nn.Sequential(
