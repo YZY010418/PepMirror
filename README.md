@@ -1,6 +1,6 @@
-##Introduction
+## Introduction
 
-This is for reproducing the results in the manuscript "Cross-Chirality Generalization by Axial Vectors for Hetero-Chiral Protein-Peptide Interaction Design " submitted to ICML 2026.
+😊 Hi, this is **PepMirror**, a generative framework aiming to control the chirality of each residue during target-conditioned peptide binder design. 
 
 
 ## Setup
@@ -32,14 +32,14 @@ python -m scripts.data_process.peptide.pepbench --index ${PREFIX}/pepbench/all.t
 python -m scripts.data_process.peptide.transform_index --train_index ${PREFIX}/pepbench/train.txt --valid_index ${PREFIX}/pepbench/valid.txt --all_index_for_non_standard ${PREFIX}/pepbench/all.txt --processed_dir ${PREFIX}/pepbench/processed/
 python -m scripts.data_process.peptide.pepbench --index ${PREFIX}/ProtFrag/all.txt --out_dir ${PREFIX}/ProtFrag/processed
 ```
-Then, we used 8 GPUs with 80G memmory each to train PepMirror,  which takes about 2 days to finish. We enabled TF32 for acceleration.
+Then, we used 8 GPUs with 80G memmory each to train PepMirror, which takes about 2 days to finish. We enabled TF32 for acceleration.
 ```bash
 export TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1
 GPU=0,1,2,3,4,5,6,7 bash scripts/train_pipe.sh ./ckpts/pepmirror ./configs/IterAE/train.yaml ./configs/LDM/train.yaml
 ```
 To set the type of axial vectors used in the model, you can change the `axial_type` in `./configs/IterAE/train.yaml` and `./configs/LDM/train.yaml`, where three types of axial features are implemented: cross, triple, and commutator, as discussed in the paper.
 
-##Inference
+## Inference
 
 We used LNR as our test set. First, we used Rosetta to clean the complex structures in LNR, and fixed PDB files mannually to avoid uncessary trouble (for example, some PDB have ACE/NME as capping, and these structures are recognized as a residue).
 

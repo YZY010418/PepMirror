@@ -79,6 +79,7 @@ model:
     efficient: false
     vector_act: layernorm
     axial_type: cross
+    axial_position: GNN
   decoder_opt:
     n_rbf: 64
     cutoff: 10.0
@@ -89,6 +90,7 @@ model:
     efficient: false
     vector_act: layernorm
     axial_type: cross
+    axial_position: GNN
   loss_weights:
     Zh_kl_loss: 0.6
     Zx_kl_loss: 0.8

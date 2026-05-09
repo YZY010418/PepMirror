@@ -20,28 +20,42 @@ try:
 except:
     xformers_enable = False
 
-class AxialFeatureInjection(nn.Module):
+class AxialFeatureConstructor(nn.Module):
     def __init__(self, axial_type='cross'):
         super().__init__()
         self.axial_type = axial_type
         
         if axial_type == 'cross':
-            self._inject = self._inject_cross
+            self.out_type = 'vector'
+            self.out_mul = 2
+            self._construct = self._construct_cross
         elif axial_type == 'triple':
-            self._inject = self._inject_triple
+            self.out_type = 'vector'
+            self.out_mul = 2
+            self._construct = self._construct_triple
+        elif axial_type == 'triple_scalar':
+            self.out_type = 'scalar'
+            self.out_mul = 2
+            self._construct = self._construct_triple_scalar
         elif axial_type == 'commutator':
-            self._inject = self._inject_commutator
+            self.out_type = 'vector'
+            self.out_mul = 2
+            self._construct = self._construct_commutator
+        elif axial_type == 'threemix':
+            self.out_type = 'vector'
+            self.out_mul = 4
+            self._construct = self._construct_threemix
         else:
             raise ValueError(f'Unknown axial_type: {axial_type}')
     
-    def _inject_cross(self, V):
+    def _construct_cross(self, V):
         D = V.shape[-1] 
         channelswarp_1 = V[...,list(range(1,D))+[0]] 
         norm_channelswarp_1 = channelswarp_1 / (channelswarp_1.norm(dim=-2, keepdim=True) + 1e-5) 
         cross = torch.cross(V, norm_channelswarp_1, dim=-2) 
-        return torch.cat([V, cross], dim=-1).contiguous()
+        return cross
     
-    def _inject_triple(self, V):
+    def _construct_triple(self, V):
         D = V.shape[-1] 
         channelswarp_1 = V[...,list(range(1,D))+[0]] 
         norm_channelswarp_1 = channelswarp_1 / (channelswarp_1.norm(dim=-2, keepdim=True) + 1e-5) 
@@ -50,9 +64,19 @@ class AxialFeatureInjection(nn.Module):
         cross = torch.cross(V, norm_channelswarp_1, dim=-2) 
         triple_product = (cross * norm_channelswarp_2).sum(dim=-2, keepdim=True) 
         projection = triple_product * norm_channelswarp_2 
-        return torch.cat([V, projection], dim=-1).contiguous()
+        return projection
+
+    def _construct_triple_scalar(self, V):
+        D = V.shape[-1] 
+        channelswarp_1 = V[...,list(range(1,D))+[0]] 
+        norm_channelswarp_1 = channelswarp_1 / (channelswarp_1.norm(dim=-2, keepdim=True) + 1e-5) 
+        channelswarp_2 = V[...,list(range(2,D))+[0,1]]
+        norm_channelswarp_2 = channelswarp_2 / (channelswarp_2.norm(dim=-2, keepdim=True) + 1e-5) 
+        cross = torch.cross(V, norm_channelswarp_1, dim=-2) 
+        triple_product = (cross * norm_channelswarp_2).sum(dim=-2, keepdim=False) # To concate with H
+        return triple_product
     
-    def _inject_commutator(self, V):
+    def _construct_commutator(self, V):
         D = V.shape[-1] 
         channelswarp_1 = V[...,list(range(1,D))+[0]] 
         norm_channelswarp_1 = channelswarp_1 / (channelswarp_1.norm(dim=-2, keepdim=True) + 1e-5) 
@@ -60,20 +84,35 @@ class AxialFeatureInjection(nn.Module):
         dot = (norm_V * norm_channelswarp_1).sum(dim=-2, keepdim=True)
         cross = torch.cross(V, norm_channelswarp_1, dim=-2)
         commutator = dot * cross
-        return torch.cat([V, commutator], dim=-1).contiguous()
+        return commutator
+
+    def _construct_threemix(self, V):
+        D = V.shape[-1] 
+        channelswarp_1 = V[...,list(range(1,D))+[0]]
+        channelswarp_2 = V[...,list(range(2,D))+[0,1]]
+        norm_channelswarp_1 = channelswarp_1 / (channelswarp_1.norm(dim=-2, keepdim=True) + 1e-5)
+        norm_channelswarp_2 = channelswarp_2 / (channelswarp_2.norm(dim=-2, keepdim=True) + 1e-5)
+        norm_V = V / (V.norm(dim=-2, keepdim=True) + 1e-5)
+
+        dot = (norm_V * norm_channelswarp_1).sum(dim=-2, keepdim=True)
+        cross = torch.cross(V, norm_channelswarp_1, dim=-2)
+        commutator = dot * cross
+        triple_product = (cross * norm_channelswarp_2).sum(dim=-2, keepdim=True) 
+        projection = triple_product * norm_channelswarp_2 
+        return torch.cat([cross, projection, commutator], dim=-1).contiguous()
     
     def forward(self, V):
-        return self._inject(V)
+        return self._construct(V)
 
-def axial_feature_injection(V, axial_type = 'cross'):
-    injector = AxialFeatureInjection(axial_type)
-    return injector(V)
+def axial_feature_constructor(V, axial_type = 'cross'):
+    AxialFeature = AxialFeatureConstructor(axial_type) # get the constructed axial feature, and set necessary types in the class
+    return AxialFeature
 
 @R.register('XTransEncoderAct')
 class XTransEncoderAct(nn.Module):
     def __init__(self, hidden_size, ffn_size, n_rbf, cutoff=7.0, z_requires_grad=False, 
                  edge_size=16, n_layers=3, n_head=4, pre_norm=False, use_edge_feat=False, sparse_k=3, local_mask=False, attn_bias=True,
-                 efficient=False, vector_act='none', axial_type='cross',
+                 efficient=False, vector_act='none', axial_type='cross', axial_position='Both'
                  # use_ieconv=False, zero_conv=False, efficient_ieconv=False, ieconv_share_edge_feat=False
         ) -> None:
         super().__init__()
@@ -82,7 +121,7 @@ class XTransEncoderAct(nn.Module):
             d_hidden = hidden_size, d_ffn = ffn_size, n_heads = n_head, n_layers = n_layers,
             n_rbf = n_rbf, d_edge = edge_size, cutoff = cutoff, use_edge_feat = use_edge_feat, local_mask = local_mask, attn_bias = attn_bias,
             layer_norm = 'pre' if pre_norm else 'post', sparse_k = sparse_k, efficient = efficient,
-            vector_act = vector_act, axial_type = axial_type,
+            vector_act = vector_act, axial_type = axial_type, axial_position = axial_position
         )
 
     def forward(self, H, Z, block_id, batch_id, edges, edge_attr=None, topo_edges=None, topo_edge_attr=None, attn_mask=None):
@@ -115,6 +154,7 @@ class Transformer(nn.Module):
             efficient=False,
             vector_act='none',
             axial_type='cross',
+            axial_position='Both',
     ):
         super().__init__()
 
@@ -126,7 +166,8 @@ class Transformer(nn.Module):
         self.efficient = efficient
         self._local_mask = local_mask
         self.axial_type = axial_type
-        self.axial_injector = AxialFeatureInjection(axial_type)
+        self.axial_position = axial_position
+        self.axial_constructor = AxialFeatureConstructor(axial_type)
         if self.efficient and not xformers_enable:
             print("xformers are not downloaded, change into custom attention mechanism. "
                   "Please install xformers via 'pip3 install -U xformers --index-url https://download.pytorch.org/whl/cu121',"
@@ -145,10 +186,10 @@ class Transformer(nn.Module):
             nn.Linear(d_hidden, d_hidden)
         )
 
-        self.mixing_axial = nn.Linear(d_hidden * 2, d_hidden, bias=False)
+        self.mixing_axial = nn.Linear(d_hidden * self.axial_constructor.out_mul, d_hidden, bias=False)
 
         self.final_v = GVPFFNLayer(
-            d_hidden, d_ffn, act_fn, d_output=1, axial_type=self.axial_type
+            d_hidden, d_ffn, act_fn, d_output=1, axial_type=self.axial_type, axial_position=self.axial_position
         )
 
         self.n_rbf = n_rbf
@@ -165,7 +206,7 @@ class Transformer(nn.Module):
 
         for i in range(0, n_layers):
             self.add_module(f'layer_{i}', EPTLayer(
-                d_hidden, d_ffn, n_heads, i, act_fn, layer_norm, residual, self.efficient, vector_act, attn_bias, self.axial_type
+                d_hidden, d_ffn, n_heads, i, act_fn, layer_norm, residual, self.efficient, vector_act, attn_bias, self.axial_type, self.axial_position
             ))
 
     def forward(self, H, Z, block_id, batch_id, edges, edge_attr=None, topo_edges=None, topo_edge_attr=None, attn_mask=None):
@@ -198,8 +239,14 @@ class Transformer(nn.Module):
         edge_vecs = edge_vec.unsqueeze(-1) * equiv_feat.unsqueeze(-2) # [Ne, 3, d_hidden]
         H = self.node_mlp(torch.cat([H, scatter_sum(edge_scas, unit_row, dim_size=H.shape[0], dim=0)], dim=-1))
         V = scatter_mean(edge_vecs, unit_row, dim_size=H.shape[0], dim=0)
-        V = self.axial_injector(V)
-        V = self.mixing_axial(V)
+        axial_feature = self.axial_constructor(V) # construct the feature anyway to get some label
+        if self.axial_position == 'GNN' or self.axial_position == 'Both':
+            if self.axial_constructor.out_type == 'vector':
+                V = torch.cat([V, axial_feature], dim = -1).contiguous()
+                V = self.mixing_axial(V)
+            elif self.axial_constructor.out_type == 'scalar':
+                H = torch.cat([H, axial_feature], dim = -1).contiguous()
+                H = self.mixing_axial(H)
 
         # graph to batch
         batch_to_nodes = batch_id[block_id]
@@ -266,7 +313,8 @@ class EPTLayer(nn.Module):
             efficient = False,
             vector_act = 'none',
             attn_bias = True,
-            axial_type='cross'
+            axial_type='cross',
+            axial_position='Both' 
         ):
         super(EPTLayer, self).__init__()
         self.attn_layer = SubLayerWrapper(
@@ -276,7 +324,7 @@ class EPTLayer(nn.Module):
             residual
         )
         self.ffn_layer = SubLayerWrapper(
-            GVPFFNLayer(d_hidden, d_ffn, act_fn, vector_act = vector_act, axial_type=axial_type),
+            GVPFFNLayer(d_hidden, d_ffn, act_fn, vector_act = vector_act, axial_type=axial_type, axial_position=axial_position),
             d_hidden,
             layer_norm,
             residual
@@ -354,7 +402,7 @@ class SelfAttnLayer(nn.Module):
 
 class GVPFFNLayer(nn.Module):
 
-    def __init__(self, d_hidden, d_ffn, act_fn=nn.SiLU(), d_output=None, vector_act='none', axial_type='cross'):
+    def __init__(self, d_hidden, d_ffn, act_fn=nn.SiLU(), d_output=None, vector_act='none', axial_type='cross', axial_position='Both'):
 
         super(GVPFFNLayer, self).__init__()
 
@@ -363,14 +411,28 @@ class GVPFFNLayer(nn.Module):
         self.act_fn = act_fn
         self.d_output = d_hidden if d_output is None else d_output
         self.axial_type = axial_type
-        self.axial_injector = AxialFeatureInjection(axial_type)
+        self.axial_position = axial_position
+        self.axial_constructor = AxialFeatureConstructor(axial_type)
 
-        self.linear_v = nn.Linear(d_hidden * 2, d_hidden + self.d_output, bias=False)
-        self.ffn_mlp = nn.Sequential(
-            nn.Linear(d_hidden * 2, d_ffn),
-            act_fn,
-            nn.Linear(d_ffn, d_hidden + self.d_output)
-        )
+        self.use_axial_ffn = self.axial_position in ['FFN','Both']
+
+        if self.use_axial_ffn and self.axial_constructor.out_type == 'vector':
+            self.linear_v = nn.Linear(d_hidden * self.axial_constructor.out_mul, d_hidden + self.d_output, bias=False
+        else:
+            self.linear_v = nn.Linear(d_hidden, d_hidden + self.d_output, bias=False
+        
+        if self.use_axial_ffn and self.axial_constructor.out_type == 'scalar':
+            self.ffn_mlp = nn.Sequential(
+                nn.Linear(d_hidden * ( self.axial_constructor.out_mul + 1 ), d_ffn),
+                act_fn,
+                nn.Linear(d_ffn, d_hidden + self.d_output)
+            )
+        else:
+            self.ffn_mlp = nn.Sequential(
+                nn.Linear(d_hidden * 2, d_ffn),
+                act_fn,
+                nn.Linear(d_ffn, d_hidden + self.d_output)
+            )
 
         self.vector_act = vector_act
         if self.vector_act == 'layernorm':
@@ -389,7 +451,12 @@ class GVPFFNLayer(nn.Module):
             return torch.ones_like(Vs)
 
     def forward(self, H, V):
-        V = self.axial_injector(V)
+        if self.use_axial_ffn:
+            axial_feature = self.axial_constructor(V)
+            if self.axial_constructor.out_type == 'vector':
+                V = torch.cat([V, axial_feature], dim = -1).contiguous()
+            elif self.axial_constructor.out_type == 'scalar':
+                H = torch.cat([H, axial_feature], dim = -1).contiguous()
         V_proj = self.linear_v(V)
         V1, V2 = V_proj[...,:self.d_hidden], V_proj[...,self.d_hidden:]
         scaler = torch.cat([H, V1.norm(dim=-2)], dim=-1)
