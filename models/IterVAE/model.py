@@ -780,7 +780,7 @@ class CondIterAutoEncoder(nn.Module):
                 torch.cat([_col, _row], dim=0),
                 torch.cat([_type, _type], dim=0)
             ], dim=1)
-        
+
         # concat context bonds and generated bonds
         topo_edge_type = bonds[:, 2]
         topo_edges, topo_edge_attr = bonds[:, :2].T, self.atom_edge_embedding(topo_edge_type)
