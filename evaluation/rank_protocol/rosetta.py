@@ -308,7 +308,8 @@ def calculate_rosetta_metrics(pdb_path, receptor_chain_ids, ligand_chain_ids, pa
             for filter_name in filter_names:
                 add_filter_value(record, xml_objects, pose, filter_name)
             if not paths.get("skip_ec", False):
-                add_simple_metric_value(record, xml_objects, pose, "ec_metric")
+                with suppress_stdout_stderr(paths.get("quiet_apbs", True)):
+                    add_simple_metric_value(record, xml_objects, pose, "ec_metric")
             else:
                 record["ec_metric"] = ""
 

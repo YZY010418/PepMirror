@@ -1,11 +1,13 @@
 import os
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
 
 from .common import (
+    chain_ids_text,
     copy_or_unzip_pdb,
     get_conda_prefix,
     load_biopython,
@@ -225,6 +227,45 @@ def first_nonempty_line(text):
     return ""
 
 
+def compact_output(text, max_lines=4):
+    lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
+    if not lines:
+        return ""
+    if len(lines) > max_lines:
+        lines = lines[: max_lines // 2] + ["..."] + lines[-(max_lines - max_lines // 2):]
+    return " / ".join(lines)
+
+
+def vina_failure_details(label, result):
+    details = [f"{label} {returncode_summary(result.returncode)}"]
+    stderr = compact_output(result.stderr)
+    stdout = compact_output(result.stdout)
+    if stderr:
+        details.append(f"{label} stderr={stderr}")
+    if stdout:
+        details.append(f"{label} stdout={stdout}")
+    return details
+
+
+def returncode_summary(returncode):
+    if returncode is None:
+        return "returncode=None"
+    if returncode < 0:
+        sig = -returncode
+        try:
+            sig_name = signal.Signals(sig).name
+        except Exception:
+            sig_name = f"signal {sig}"
+        return f"killed by {sig_name}"
+    return f"returncode={returncode}"
+
+
+def vina_failure_message(result, fallback="vina failed"):
+    if result.returncode is not None and result.returncode < 0:
+        return f"vina {returncode_summary(result.returncode)}"
+    return first_nonempty_line(result.stderr) or first_nonempty_line(result.stdout) or fallback
+
+
 def try_run_mgl_tool(cmd, output_path):
     """Run an MGLTools preparation command and return (ok, diagnostic)."""
     last_error = ""
@@ -248,15 +289,63 @@ def run_mgl_tool(cmd, output_path):
     return True
 
 
-def compute_vina_box_from_chains(chains, padding=8.0, min_size=18.0):
+def compute_vina_box_from_chains(chains, padding=2.0, min_size=18.0, max_size=30.0, ligand_margin=0.5):
     coords = [atom.get_coord() for chain in chains for atom in chain.get_atoms()]
     if not coords:
         raise ValueError("ligand chain(s) have no atoms")
+    padding = float(padding)
+    min_size = float(min_size)
+    ligand_margin = max(0.0, float(ligand_margin))
+    max_size = None if max_size is None or float(max_size) <= 0 else float(max_size)
+    if max_size is not None and min_size > max_size:
+        raise ValueError(f"Vina box min size {min_size:g} is larger than max size {max_size:g}")
+
     mins = [min(coord[i] for coord in coords) for i in range(3)]
     maxs = [max(coord[i] for coord in coords) for i in range(3)]
     center = [(mins[i] + maxs[i]) / 2.0 for i in range(3)]
-    size = [max((maxs[i] - mins[i]) + 2.0 * padding, min_size) for i in range(3)]
-    return center + size
+    ligand_span = [maxs[i] - mins[i] for i in range(3)]
+    required_size = [span + 2.0 * ligand_margin for span in ligand_span]
+    raw_size = [max(ligand_span[i] + 2.0 * padding, min_size, required_size[i]) for i in range(3)]
+    if max_size is None:
+        size = raw_size
+    else:
+        size = [max(min(value, max_size), required_size[i]) for i, value in enumerate(raw_size)]
+    info = {
+        "center": center,
+        "ligand_span": ligand_span,
+        "required_size": required_size,
+        "raw_size": raw_size,
+        "size": size,
+        "volume": size[0] * size[1] * size[2],
+        "capped": any(size[i] < raw_size[i] for i in range(3)),
+        "cap_raised_to_fit_ligand": max_size is not None and any(size[i] > max_size for i in range(3)),
+        "padding": padding,
+        "min_size": min_size,
+        "max_size": max_size,
+        "ligand_margin": ligand_margin,
+    }
+    return center + size, info
+
+
+def format_vina_box_info(info):
+    def fmt(values):
+        return ",".join(f"{value:.2f}" for value in values)
+
+    parts = [
+        "vina box center=" + fmt(info["center"]),
+        "size=" + fmt(info["size"]),
+        f"volume={info['volume']:.1f}",
+        "ligand span=" + fmt(info["ligand_span"]),
+    ]
+    if info.get("capped"):
+        parts.append(
+            "raw size="
+            + fmt(info["raw_size"])
+            + f" capped at {info['max_size']:.2f}A"
+        )
+    if info.get("cap_raised_to_fit_ligand"):
+        parts.append("cap raised on long ligand axis to keep ligand inside grid")
+    return "; ".join(parts)
 
 
 def get_chains(model, chain_ids):
@@ -332,7 +421,14 @@ def calculate_vina_score(pdb_path, receptor_chain_ids, ligand_chain_ids, paths):
         lig_removed_tags = sanitize_pdbqt_file(lig_pdbqt, "ligand")
         lig_wrapped_root = ensure_ligand_pdbqt_torsion_tree(lig_pdbqt)
 
-        cx, cy, cz, sx, sy, sz = compute_vina_box_from_chains(lig_chains)
+        box, box_info = compute_vina_box_from_chains(
+            lig_chains,
+            padding=paths.get("vina_box_padding", 2.0),
+            min_size=paths.get("vina_box_min_size", 18.0),
+            max_size=paths.get("vina_box_max_size", 30.0),
+            ligand_margin=paths.get("vina_box_ligand_margin", 0.5),
+        )
+        cx, cy, cz, sx, sy, sz = box
         vina_mode = paths.get("vina_mode", "local_only")
         if vina_mode not in {"local_only", "score_only"}:
             raise ValueError(f"unsupported Vina mode: {vina_mode}")
@@ -359,8 +455,7 @@ def calculate_vina_score(pdb_path, receptor_chain_ids, ligand_chain_ids, paths):
             if score_result.returncode == 0:
                 result = score_result
             else:
-                message = (result.stderr.strip().splitlines() or result.stdout.strip().splitlines() or ["vina failed"])[0]
-                score_message = (score_result.stderr.strip().splitlines() or score_result.stdout.strip().splitlines() or [""])[0]
+                message = vina_failure_message(result)
                 diag = []
                 if rec_removed_tags:
                     diag.append("removed receptor PDBQT tags=" + ",".join(rec_removed_tags))
@@ -368,13 +463,14 @@ def calculate_vina_score(pdb_path, receptor_chain_ids, ligand_chain_ids, paths):
                     diag.append("removed ligand PDBQT tags=" + ",".join(lig_removed_tags))
                 if lig_wrapped_root:
                     diag.append("ligand PDBQT wrapped as ROOT/ENDROOT/TORSDOF 0")
-                if score_message:
-                    diag.append("score_only also failed=" + score_message)
+                diag.append(format_vina_box_info(box_info))
+                diag.extend(vina_failure_details("local_only", result))
+                diag.extend(vina_failure_details("score_only", score_result))
                 diag.append("receptor tags=" + summarize_pdbqt_tags(rec_pdbqt, "receptor"))
                 diag.append("ligand tags=" + summarize_pdbqt_tags(lig_pdbqt, "ligand"))
                 raise RuntimeError(message + " | " + "; ".join(diag))
         elif result.returncode != 0:
-            message = (result.stderr.strip().splitlines() or result.stdout.strip().splitlines() or ["vina failed"])[0]
+            message = vina_failure_message(result)
             diag = []
             if rec_removed_tags:
                 diag.append("removed receptor PDBQT tags=" + ",".join(rec_removed_tags))
@@ -382,6 +478,8 @@ def calculate_vina_score(pdb_path, receptor_chain_ids, ligand_chain_ids, paths):
                 diag.append("removed ligand PDBQT tags=" + ",".join(lig_removed_tags))
             if lig_wrapped_root:
                 diag.append("ligand PDBQT wrapped as ROOT/ENDROOT/TORSDOF 0")
+            diag.append(format_vina_box_info(box_info))
+            diag.extend(vina_failure_details(vina_mode, result))
             diag.append("receptor tags=" + summarize_pdbqt_tags(rec_pdbqt, "receptor"))
             diag.append("ligand tags=" + summarize_pdbqt_tags(lig_pdbqt, "ligand"))
             raise RuntimeError(message + " | " + "; ".join(diag))

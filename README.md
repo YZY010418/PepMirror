@@ -1,5 +1,3 @@
-## 🪞 Introduction
-
 ![PepMirror_Overview](./figure.png)
 
 😊 Hi, this is **PepMirror**, a generative model for designed mirror-image D peptide binders towards protein targets. By constructing axial features and let them interact with polar features, we help the transformers to better understand the difference of different chirality, while preserves stable representations between enantiomers, enabling the stability of homo-chiral generation and hetero-chiral interface design.

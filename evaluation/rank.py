@@ -42,7 +42,7 @@ else:
 def warn_missing_runtime_tools(paths):
     warnings_to_print = []
     if paths.get("skip_ec", False):
-        print("[info] Rosetta EC/APBS is skipped; use --with_ec to fill the ec column.")
+        print("[info] Rosetta EC/APBS is skipped because --skip_ec was set.")
 
     for label, key in (("AutoDock Vina", "vina"), ("PLIP", "plip")):
         if not command_exists(paths[key]):
@@ -135,6 +135,14 @@ def main():
     parser.add_argument("--vina_path", default=DEFAULT_VINA, help="vina executable name/path; default uses active environment PATH")
     parser.add_argument("--vina_mode", choices=["local_only", "score_only"], default="local_only",
                         help="Vina scoring mode; score_only is faster and avoids local minimization")
+    parser.add_argument("--vina_box_padding", type=float, default=2.0,
+                        help="padding in Angstrom around the ligand bounding box")
+    parser.add_argument("--vina_box_min_size", type=float, default=18.0,
+                        help="minimum Vina box size in Angstrom for each axis")
+    parser.add_argument("--vina_box_max_size", type=float, default=30.0,
+                        help="soft maximum Vina box size in Angstrom for each axis; set <=0 to disable the cap")
+    parser.add_argument("--vina_box_ligand_margin", type=float, default=0.5,
+                        help="minimum extra Angstrom margin that keeps the full ligand inside a capped Vina box")
     parser.add_argument("--mgl_python", default=DEFAULT_MGL_PYTHON,
                         help="MGLTools Python runner. Default 'auto' uses $MGLTOOLS_PYTHON, then $CONDA_PREFIX/bin/python2.7, then python2.7/pythonsh from PATH. Use direct/none to call prepare scripts directly")
     parser.add_argument("--prepare_ligand", default=DEFAULT_PREP_LIGAND, help="prepare_ligand4.py name/path; default uses active environment PATH")
@@ -146,11 +154,13 @@ def main():
     parser.add_argument("--with_rosetta_ddg", action="store_true",
                         help="calculate and output rosetta_ddg and rosetta_ddg_norepack; skipped by default")
     parser.add_argument("--show_rosetta_log", action="store_true",
-                        help="show PyRosetta/Rosetta/APBS stdout and stderr instead of muting them")
+                        help="show PyRosetta/Rosetta stdout and stderr; APBS remains muted unless --show_apbs_log is set")
+    parser.add_argument("--show_apbs_log", action="store_true",
+                        help="show APBS stdout/stderr during EC calculation; muted by default")
     parser.add_argument("--with_ec", action="store_true",
-                        help="compute Rosetta ElectrostaticComplementarityMetric/APBS; slow and noisy, skipped by default")
+                        help="legacy no-op; EC/APBS is calculated by default unless --skip_ec is set")
     parser.add_argument("--skip_ec", action="store_true",
-                        help="legacy alias; EC/APBS is already skipped by default unless --with_ec is set")
+                        help="skip Rosetta ElectrostaticComplementarityMetric/APBS and leave ec blank")
     parser.add_argument("--rosetta_xml", default=DEFAULT_ROSETTA_XML)
     parser.add_argument("--plip_path", default=DEFAULT_PLIP, help="plip executable name/path; default uses active environment PATH")
     parser.add_argument("--error_output", default=None,
@@ -160,14 +170,19 @@ def main():
     paths = {
         "vina": args.vina_path,
         "vina_mode": args.vina_mode,
+        "vina_box_padding": args.vina_box_padding,
+        "vina_box_min_size": args.vina_box_min_size,
+        "vina_box_max_size": args.vina_box_max_size,
+        "vina_box_ligand_margin": args.vina_box_ligand_margin,
         "mgl_python": args.mgl_python,
         "prep_ligand": args.prepare_ligand,
         "prep_receptor": args.prepare_receptor,
         "pyrosetta_flags": args.pyrosetta_flags,
         "quiet_rosetta": not args.show_rosetta_log,
+        "quiet_apbs": not args.show_apbs_log,
         "with_rosetta_ddg": args.with_rosetta_ddg,
         "rosetta_ddg_repeats": args.rosetta_ddg_repeats,
-        "skip_ec": args.skip_ec or not args.with_ec,
+        "skip_ec": args.skip_ec,
         "rosetta_xml": resolve_rosetta_xml_path(args.rosetta_xml),
         "plip": args.plip_path,
         "plip_count_mode": args.plip_count_mode or args.plip_mode or "combined",
