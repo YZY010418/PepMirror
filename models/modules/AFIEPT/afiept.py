@@ -29,10 +29,10 @@ class AxialFeatureConstructor(nn.Module):
             self.out_type = 'vector'
             self.out_mul = 2
             self._construct = self._construct_cross
-        elif axial_type == 'triple':
+        elif axial_type == 'triple_projection':
             self.out_type = 'vector'
             self.out_mul = 2
-            self._construct = self._construct_triple
+            self._construct = self._construct_triple_projection
         elif axial_type == 'triple_scalar':
             self.out_type = 'scalar'
             self.out_mul = 2
@@ -62,7 +62,7 @@ class AxialFeatureConstructor(nn.Module):
         cross = torch.cross(V, norm_channelswarp_1, dim=-2) 
         return cross
     
-    def _construct_triple(self, V):
+    def _construct_triple_projection(self, V):
         D = V.shape[-1] 
         channelswarp_1 = V[...,list(range(1,D))+[0]] 
         norm_channelswarp_1 = channelswarp_1 / (channelswarp_1.norm(dim=-2, keepdim=True) + 1e-5) 

@@ -34,7 +34,7 @@ def install_legacy_checkpoint_aliases():
 
     legacy_methods = {
         '_inject_cross': '_construct_cross',
-        '_inject_triple': '_construct_triple',
+        '_inject_triple': '_construct_triple_projection',
         '_inject_commutator': '_construct_commutator',
     }
     axial_cls = afiept_module.AxialFeatureConstructor
@@ -82,8 +82,8 @@ def infer_axial_setting(path):
         axial_type = 'triple_scalar'
     elif 'commutator' in name:
         axial_type = 'commutator'
-    elif 'triple_projection' in name or 'triple' in name:
-        axial_type = 'triple'
+    elif 'triple_projection' in name:
+        axial_type = 'triple_projection'
     else:
         axial_type = 'cross'
 

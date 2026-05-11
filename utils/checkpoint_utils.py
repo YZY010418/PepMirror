@@ -16,7 +16,6 @@ AXIAL_TYPE_ORDER = [
 
 AXIAL_TYPE_ALIASES = {
     'cross': 'cross',
-    'triple': 'triple_projection',
     'triple_projection': 'triple_projection',
     'triple_scalar': 'triple_scalar',
     'commutator': 'commutator',
