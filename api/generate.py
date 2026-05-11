@@ -10,6 +10,7 @@ from rdkit import Chem
 
 from data.bioparse.writer.complex_to_pdb import complex_to_pdb
 from utils.config_utils import overwrite_values
+from utils.checkpoint_utils import resolve_generation_checkpoint
 from utils.logger import print_log
 from utils.random_seed import setup_seed
 import utils.register as R
@@ -22,7 +23,7 @@ from .templates import BaseTemplate
 def parse():
     parser = argparse.ArgumentParser(description='Generate peptides given epitopes')
     parser.add_argument('--config', type=str, required=True, help='Path to the test configuration')
-    parser.add_argument('--ckpt', type=str, default='./checkpoints/model.ckpt', help='Path to checkpoint')
+    parser.add_argument('--ckpt', type=str, default=None, help='Optional checkpoint file, training run directory, or release checkpoint directory. Defaults to checkpoint_dir in the config.')
     parser.add_argument('--save_dir', type=str, required=True, help='Directory to save generated peptides')
 
     parser.add_argument('--gpu', type=int, default=0, help='GPU to use, -1 for cpu')
@@ -199,8 +200,15 @@ def main(args, opt_args):
     config = overwrite_values(config, opt_args)
 
     # load model
-    ckpt = args.ckpt
-    print_log(f'Using checkpoint {ckpt}')
+    ckpt, ckpt_condition = resolve_generation_checkpoint(config, args.ckpt)
+    if ckpt_condition is None:
+        print_log(f'Using checkpoint {ckpt}')
+    else:
+        print_log(
+            f'Using checkpoint {ckpt} for '
+            f'axial_type={ckpt_condition["axial_type"]}, '
+            f'axial_position={ckpt_condition["axial_position"]}'
+        )
     model = torch.load(ckpt, map_location='cpu', weights_only=False)
     device = torch.device('cpu' if args.gpu == -1 else f'cuda:{args.gpu}')
     model.to(device)

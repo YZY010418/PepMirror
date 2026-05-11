@@ -9,3 +9,8 @@ dataloader:
 
 n_samples: 100
 n_cycles: 0
+
+# Generation checkpoint selector. Passing --ckpt overrides checkpoint_dir.
+axial_type: cross
+axial_position: Both
+checkpoint_dir: ./checkpoints

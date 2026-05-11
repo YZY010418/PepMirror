@@ -14,6 +14,7 @@ import numpy as np
 
 import models
 from utils.config_utils import overwrite_values
+from utils.checkpoint_utils import resolve_generation_checkpoint
 from data.bioparse.writer.complex_to_pdb import complex_to_pdb
 from data.bioparse import Complex, Block, Atom, VOCAB, BondType
 from data.base import Summary, transform_data
@@ -21,20 +22,6 @@ from data import create_dataloader, create_dataset
 from utils.logger import print_log
 from utils.random_seed import setup_seed
 from models.LDM.data_utils import Recorder, OverwriteTask, _get_item
-
-
-def get_best_ckpt(ckpt_dir):
-    with open(os.path.join(ckpt_dir, 'checkpoint', 'topk_map.txt'), 'r') as f:
-        ls = f.readlines()
-    ckpts = []
-    for l in ls:
-        k,v = l.strip().split(':')
-        k = float(k)
-        v = v.split('/')[-1]
-        ckpts.append((k,v))
-
-    best_ckpt = ckpts[0][1]
-    return os.path.join(ckpt_dir, 'checkpoint', best_ckpt)
 
 
 def to_device(data, device):
@@ -135,9 +122,16 @@ def main(args, opt_args):
     mode = config.get('sample_opt', {}).get('mode', 'codesign')
     struct_only = mode == 'fixseq'
     # load model
-    b_ckpt = args.ckpt if args.ckpt.endswith('.ckpt') else get_best_ckpt(args.ckpt)
+    b_ckpt, ckpt_condition = resolve_generation_checkpoint(config, args.ckpt)
     ckpt_dir = os.path.split(os.path.split(b_ckpt)[0])[0]
-    print(f'Using checkpoint {b_ckpt}')
+    if ckpt_condition is None:
+        print(f'Using checkpoint {b_ckpt}')
+    else:
+        print(
+            f'Using checkpoint {b_ckpt} for '
+            f'axial_type={ckpt_condition["axial_type"]}, '
+            f'axial_position={ckpt_condition["axial_position"]}'
+        )
     model = torch.load(b_ckpt, map_location='cpu')
     device = torch.device('cpu' if args.gpu == -1 else f'cuda:{args.gpu}')
     model.to(device)
@@ -241,7 +235,7 @@ def main(args, opt_args):
 def parse():
     parser = argparse.ArgumentParser(description='Generate peptides given epitopes')
     parser.add_argument('--config', type=str, required=True, help='Path to the test configuration')
-    parser.add_argument('--ckpt', type=str, required=True, help='Path to checkpoint')
+    parser.add_argument('--ckpt', type=str, default=None, help='Optional checkpoint file, training run directory, or release checkpoint directory. Defaults to checkpoint_dir in the config.')
     parser.add_argument('--save_dir', type=str, default=None, help='Directory to save generated peptides')
 
     parser.add_argument('--gpu', type=int, default=0, help='GPU to use, -1 for cpu')

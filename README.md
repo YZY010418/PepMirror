@@ -50,8 +50,18 @@ The processed mmap of LNR and LNR_mirror can be found at `./dataset/LNR.tar.gz`.
 Then, we design 100 structures for each LNR complex.
 
 ```bash
-python generate.py --config configs/test/test_pep.yaml --ckpt {path/to/checkpoint} --gpu 0 --save_dir {output/path}
+python generate.py --config configs/test/test_pep.yaml --gpu 0 --save_dir {output/path}
 ```
+
+Checkpoints are selected from the release checkpoint directory by axial condition. Passing `--ckpt` overrides `checkpoint_dir` with either a checkpoint file, a training run directory, or another release checkpoint directory.
+
+```yaml
+axial_type: triple_projection
+axial_position: both
+checkpoint_dir: ./checkpoints
+```
+
+PepMirror recognizes release checkpoint filenames of the form `pepmirror_{axial_type}_{axial_position}_v1.ckpt`, for example `pepmirror_triple_projection_both_v1.ckpt`. If multiple axial feature types are requested, their names are normalized to the fixed order `cross`, `triple_projection`, `triple_scalar`, `commutator` before matching, so `commutator_cross_triple_projection` matches `pepmirror_cross_triple_projection_commutator_both_v1.ckpt`. The `polar` checkpoint is matched as `pepmirror_polar_v1.ckpt`. If no checkpoint matches the requested condition, generation exits before loading a model and reports the supported conditions.
 
 The generated structures are minimized under Amber14 forcefield.
 
