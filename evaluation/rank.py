@@ -15,6 +15,7 @@ if __package__:
         DEFAULT_VINA,
         ERROR_COLUMNS,
         OUTPUT_COLUMNS,
+        ROSETTA_DDG_COLUMNS,
     )
     from .rank_protocol.plip import compute_hotspot_weighted_scores
     from .rank_protocol.runner import run_tasks
@@ -31,6 +32,7 @@ else:
         DEFAULT_VINA,
         ERROR_COLUMNS,
         OUTPUT_COLUMNS,
+        ROSETTA_DDG_COLUMNS,
     )
     from rank_protocol.plip import compute_hotspot_weighted_scores
     from rank_protocol.runner import run_tasks
@@ -81,16 +83,21 @@ def resolve_rosetta_xml_path(xml_path):
 
     evaluation_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
-        os.path.join(evaluation_dir, "RosettaRankingScript.xml"),
-        os.path.join(evaluation_dir, "ref", "Rank", "RosettaRankingScript.xml"),
-        os.path.join(evaluation_dir, "ref", "Rank", "RosettaRanking0109_order.xml"),
-        os.path.join(evaluation_dir, "rank_protocol", "RosettaRankingScript.xml"),
+        os.path.join(evaluation_dir, "RosettaRankingScript.xml")
     ]
     for candidate in candidates:
         if os.path.exists(candidate):
             return os.path.abspath(candidate)
 
     return os.path.abspath(xml_path)
+
+
+def output_columns(include_rosetta_ddg=False):
+    columns = list(OUTPUT_COLUMNS)
+    if include_rosetta_ddg:
+        insert_at = columns.index("vina score")
+        columns[insert_at:insert_at] = ROSETTA_DDG_COLUMNS
+    return columns
 
 
 def main():
@@ -132,7 +139,9 @@ def main():
     parser.add_argument("--pyrosetta_flags", default=DEFAULT_PYROSETTA_FLAGS,
                         help="flags passed to pyrosetta.init()")
     parser.add_argument("--rosetta_ddg_repeats", type=int, default=1,
-                        help="Rosetta Ddg repeats for the repacked ddg metric; use 5 to match CPMirror exactly")
+                        help="Rosetta Ddg repeats when --with_rosetta_ddg is set; use 5 to match CPMirror exactly")
+    parser.add_argument("--with_rosetta_ddg", action="store_true",
+                        help="calculate and output rosetta_ddg and rosetta_ddg_norepack; skipped by default")
     parser.add_argument("--show_rosetta_log", action="store_true",
                         help="show PyRosetta/Rosetta/APBS stdout and stderr instead of muting them")
     parser.add_argument("--with_ec", action="store_true",
@@ -153,6 +162,7 @@ def main():
         "prep_receptor": args.prepare_receptor,
         "pyrosetta_flags": args.pyrosetta_flags,
         "quiet_rosetta": not args.show_rosetta_log,
+        "with_rosetta_ddg": args.with_rosetta_ddg,
         "rosetta_ddg_repeats": args.rosetta_ddg_repeats,
         "skip_ec": args.skip_ec or not args.with_ec,
         "rosetta_xml": resolve_rosetta_xml_path(args.rosetta_xml),
@@ -176,12 +186,13 @@ def main():
     for row in results:
         row["hotspot_occupoed weighted"] = hotspot_scores.get(row["_input_path"], 0.0)
 
+    columns = output_columns(include_rosetta_ddg=args.with_rosetta_ddg)
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     with open(args.output, "w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=OUTPUT_COLUMNS)
+        writer = csv.DictWriter(handle, fieldnames=columns)
         writer.writeheader()
         for row in results:
-            writer.writerow({column: row.get(column, "") for column in OUTPUT_COLUMNS})
+            writer.writerow({column: row.get(column, "") for column in columns})
 
     failed = [row for row in results if row.get("_errors")]
     if failed:

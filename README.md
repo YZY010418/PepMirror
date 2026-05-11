@@ -29,7 +29,7 @@ wget 'https://zenodo.org/api/records/20095187/files-archive' -O ./checkpoints/ch
 unzip ./checkpoints/checkpoints.zip -d ./checkpoints/
 ```
 
-If you want to replicate our D-peptide binder design campaign towards CD38, you may also install the following tools and packages.
+If you want to replicate our ranking protocol, you may also install the following tools and packages.
 
 ```bash
 # Activate the CPMirror environment first
@@ -88,7 +88,7 @@ n_samples: 100 # how many designs we want in total
 Then we can run generation by:
 
 ```bash
-python -m api.generate --config path/to/config.yaml --save_dir path/to/output/dir --gpu 0
+python -m api.generate --config path/to/config.yaml --save_dir path/to/output/dir --gpu 0 --ckpt ./checkpoints/pepmirror_cross_both_v1.ckpt 
 ```
 
 *If you don't have a reference binder* (only a receptor structure), we suggest you to mannually add an atom with an atom name of CB, such as:
@@ -106,6 +106,9 @@ The model will define pockets based on the 10A radius ball around this atom. We 
 axial_type: cross # choose from cross, triple_projection, commutator, triple_scalar, cross_triple_projection_commutator, and Polar if you don't want to inject axial features
 axial_position: Both # choose from Both, GNN, and FFN
 ```
+
+or using the `--ckpt` argument to specify a checkpoint for certain configuration.
+
 * Although there are many combinations of the axial type and position, only 7 of them have pretrained weights, as shown below.
 * You may set `checkpoint_dir: ./checkpoints_dir` if the path of the checkpoint dir is not the default path `./checkpoints_dir`.
 * By setting `--ckpt` in the `api.generate`, you may appoint a new checkpoint file for generation.
@@ -150,6 +153,7 @@ export CUDA_VISIBLE_DEVICES=
 python scripts/openmm_relaxer_mp.py {path/to/raw/structures} {path/for/minimized/structures} --nproc {number_of_protocols} --platform CPU
 ```
 * if you want to use GPU for minimization, you may ignore the first two commands and change to `--platform CUDA`
+* the relaxer removes all HETATM by default, if you want to remain these atoms, add `--include_het` in the command
 
 **Finally**, for scoring and ranking, we would like to highlight that *in silico* ranking is still a hard question without a well-accepted answer. We provide a protocol that looks good from our viewpoints, but the correlation between these metrics and affinity has not been systematically evaluated.
 
@@ -167,13 +171,11 @@ python evaluation/rank.py \
 This will generate a csv file that contains some metrics we used for ranking. Our protocol is to first filter out implausible designs by thresholds including:
 
 * absBSA > 400
-* relBSA > 0.25
-* rosetta_ddg < -10
-* rosetta_ddg_norepack < -20
-* vina score < -5
-* sc (shape complementary) > 0.55
-* ec (electrostatic complementary) > 0.55
-* buried_Hbonds < 5
+* relBSA > 0.20 and relBSA < 0.85
+* vina score < -4.0
+* sc (shape complementary) > 0.65
+* ec (electrostatic complementary) > 0.65
+* buried_Hbonds < 10
 * num(interaction) > 8
 * num(H_bonds) > 3
 

@@ -23,6 +23,7 @@ class ForceFieldMinimizer(object):
         tolerance=2.39,
         platform='CPU',
         cuda_device_index=None,
+        include_het=False,
     ):
         super().__init__()
         self.stiffness = stiffness * unit.kilojoules_per_mole/unit.nanometer / (unit.angstroms ** 2)
@@ -31,8 +32,142 @@ class ForceFieldMinimizer(object):
         assert platform in ('CUDA', 'CPU')
         self.platform = platform
         self.cuda_device_index = cuda_device_index
+        self.include_het = include_het
+
+    @staticmethod
+    def _atom_serial(line):
+        try:
+            return int(line[6:11])
+        except Exception:
+            return None
+
+    @staticmethod
+    def _atom_chain_id(line):
+        return line[21].strip()
+
+    @staticmethod
+    def _make_ter_line(last_atom_line, serial):
+        return f"TER   {serial:5d}      {last_atom_line[17:20]} {last_atom_line[21:22]}{last_atom_line[22:27]}\n"
+
+    @staticmethod
+    def _record_type(line):
+        if line.startswith("ATOM"):
+            return "ATOM"
+        if line.startswith("HETATM"):
+            return "HETATM"
+        return None
+
+    def _preprocess_pdb(self, pdb_str):
+        """Filter HETATM records and add TER records at protein/heterogen breaks.
+
+        OpenMM/PDBFixer only recognizes N/C termini at chain boundaries.  HETATM
+        records between protein residues should therefore split the surrounding
+        ATOM fragments, so missing terminal atoms such as N-terminal hydrogens
+        and C-terminal OXT can be added for both sides of the break.
+        """
+        lines = pdb_str.splitlines(keepends=True)
+        all_atom_serials = {
+            self._atom_serial(line)
+            for line in lines
+            if line.startswith(("ATOM", "HETATM"))
+        }
+        all_atom_serials.discard(None)
+        next_ter_serial = (max(all_atom_serials) + 1) if all_atom_serials else 1
+        serial_to_record = {
+            self._atom_serial(line): self._record_type(line)
+            for line in lines
+            if line.startswith(("ATOM", "HETATM"))
+        }
+        serial_to_record.pop(None, None)
+
+        kept_atom_serials = {
+            self._atom_serial(line)
+            for line in lines
+            if line.startswith("ATOM")
+        }
+        kept_atom_serials.discard(None)
+
+        out = []
+        previous_atom_line = None
+        previous_record = None
+        removed_het_since_atom = False
+
+        def append_ter_if_needed():
+            nonlocal next_ter_serial
+            if previous_atom_line is None:
+                return
+            if out and out[-1].startswith("TER"):
+                return
+            out.append(self._make_ter_line(previous_atom_line, next_ter_serial))
+            next_ter_serial += 1
+
+        for line in lines:
+            record = self._record_type(line)
+
+            if record == "HETATM" and not self.include_het:
+                if previous_atom_line is not None:
+                    removed_het_since_atom = True
+                continue
+
+            if record in {"ATOM", "HETATM"}:
+                if previous_atom_line is not None:
+                    chain_changed = self._atom_chain_id(previous_atom_line) != self._atom_chain_id(line)
+                    crossed_removed_het = removed_het_since_atom and record == "ATOM"
+                    crossed_kept_het = self.include_het and previous_record != record and {"ATOM", "HETATM"} == {previous_record, record}
+                    if chain_changed or crossed_removed_het or crossed_kept_het:
+                        append_ter_if_needed()
+
+                out.append(line)
+                previous_atom_line = line
+                previous_record = record
+                removed_het_since_atom = False
+                continue
+
+            if line.startswith("TER"):
+                append_ter_if_needed()
+                previous_atom_line = None
+                previous_record = None
+                removed_het_since_atom = False
+                continue
+
+            if line.startswith("CONECT"):
+                serials = []
+                for item in line.split()[1:]:
+                    try:
+                        serials.append(int(item))
+                    except Exception:
+                        pass
+                if not serials:
+                    continue
+                if not self.include_het and all(serial in kept_atom_serials for serial in serials):
+                    out.append(line)
+                    continue
+                # With HETATM retained, keep only bonds within the protein side
+                # or within the heterogen side. Cross ATOM-HETATM bonds would
+                # make the split protein residues non-terminal again.
+                record_types = {serial_to_record.get(serial) for serial in serials}
+                if self.include_het and None not in record_types and len(record_types) == 1:
+                    out.append(line)
+                continue
+
+            if line.startswith(("END", "ENDMDL")):
+                append_ter_if_needed()
+                previous_atom_line = None
+                previous_record = None
+                removed_het_since_atom = False
+                out.append(line)
+                continue
+
+            out.append(line)
+
+        if previous_atom_line is not None:
+            append_ter_if_needed()
+        if not out or not out[-1].startswith("END"):
+            out.append("END\n")
+        return "".join(out)
 
     def _fix(self, pdb_str):
+        pdb_str = self._preprocess_pdb(pdb_str)
         fixer = pdbfixer.PDBFixer(pdbfile=io.StringIO(pdb_str))
         fixer.findNonstandardResidues()
         fixer.replaceNonstandardResidues()
@@ -123,15 +258,17 @@ class ForceFieldMinimizer(object):
 
 _WORKER_MINIMIZER = None
 _WORKER_PLATFORM = None
+_WORKER_INCLUDE_HET = False
 
 
-def _init_worker(platform: str, gpu_ids):
+def _init_worker(platform: str, gpu_ids, include_het=False):
     """Initializer for multiprocessing workers.
 
     For CUDA, bind each worker process to a (possibly shared) GPU by round-robin.
     """
-    global _WORKER_MINIMIZER, _WORKER_PLATFORM
+    global _WORKER_MINIMIZER, _WORKER_PLATFORM, _WORKER_INCLUDE_HET
     _WORKER_PLATFORM = platform
+    _WORKER_INCLUDE_HET = include_het
 
     cuda_device_index = None
     if platform == 'CUDA':
@@ -152,7 +289,11 @@ def _init_worker(platform: str, gpu_ids):
             gpu_ids = [0]
         cuda_device_index = gpu_ids[(ident - 1) % len(gpu_ids)]
 
-    _WORKER_MINIMIZER = ForceFieldMinimizer(platform=platform, cuda_device_index=cuda_device_index)
+    _WORKER_MINIMIZER = ForceFieldMinimizer(
+        platform=platform,
+        cuda_device_index=cuda_device_index,
+        include_het=include_het,
+    )
 
 
 def _worker_minimize(task):
@@ -169,7 +310,10 @@ def _worker_minimize(task):
             os.makedirs(out_dir, exist_ok=True)
         if _WORKER_MINIMIZER is None:
             # Fallback (shouldn't happen if initializer runs)
-            _WORKER_MINIMIZER = ForceFieldMinimizer(platform=_WORKER_PLATFORM or 'CPU')
+            _WORKER_MINIMIZER = ForceFieldMinimizer(
+                platform=_WORKER_PLATFORM or 'CPU',
+                include_het=_WORKER_INCLUDE_HET,
+            )
         _WORKER_MINIMIZER(input_file_path, output_file_path, return_info=False)
         return input_file_path, None
     except Exception as e:
@@ -187,7 +331,7 @@ def _str2bool(v):
     raise argparse.ArgumentTypeError("--prefix must be true/false")
 
 
-def process_directory(input_dir, output_dir, platform='CUDA', nproc=None, prefix=False, gpu_ids=None):
+def process_directory(input_dir, output_dir, platform='CUDA', nproc=None, prefix=False, gpu_ids=None, include_het=False):
     if not os.path.exists(input_dir):
         print(f"{input_dir} doesn't exist")
         return
@@ -241,7 +385,11 @@ def process_directory(input_dir, output_dir, platform='CUDA', nproc=None, prefix
     failed = []
     if nproc == 1:
         cuda_device_index = gpu_ids[0] if (platform == 'CUDA' and gpu_ids) else None
-        minimizer = ForceFieldMinimizer(platform=platform, cuda_device_index=cuda_device_index)
+        minimizer = ForceFieldMinimizer(
+            platform=platform,
+            cuda_device_index=cuda_device_index,
+            include_het=include_het,
+        )
         for input_file_path, output_file_path in tqdm(pdb_files, desc="Processing files"):
             try:
                 minimizer(input_file_path, output_file_path, return_info=False)
@@ -253,7 +401,7 @@ def process_directory(input_dir, output_dir, platform='CUDA', nproc=None, prefix
             max_workers=nproc,
             mp_context=ctx,
             initializer=_init_worker,
-            initargs=(platform, gpu_ids),
+            initargs=(platform, gpu_ids, include_het),
         ) as ex:
             # map() is generally faster than submitting one future per task for large batches.
             for input_file_path, err in tqdm(
@@ -288,6 +436,11 @@ if __name__ == '__main__':
     parser.add_argument('--prefix', type=_str2bool, default=False,
                         help='true/false. If true, prepend the output filename with the '
                              'containing subfolder name, in addition to appending "_relaxed".')
+    parser.add_argument('--include_het', action='store_true',
+                        help='Keep HETATM records during relaxation. By default all HETATM records '
+                             'are removed before PDBFixer/OpenMM. When enabled, TER records are '
+                             'inserted around HETATM blocks so adjacent protein residues are treated '
+                             'as N/C termini and can receive missing terminal atoms.')
     args = parser.parse_args()
     
     # Parse GPU ids
@@ -314,7 +467,19 @@ if __name__ == '__main__':
         if args.platform == 'CUDA':
             cuda_device_index = (gpu_ids or [0])[0]
 
-        minimizer = ForceFieldMinimizer(platform=args.platform, cuda_device_index=cuda_device_index)
+        minimizer = ForceFieldMinimizer(
+            platform=args.platform,
+            cuda_device_index=cuda_device_index,
+            include_het=args.include_het,
+        )
         minimizer(args.input, args.output, return_info=False)
     else:
-        process_directory(args.input, args.output, platform=args.platform, nproc=args.nproc, prefix=args.prefix, gpu_ids=gpu_ids)
+        process_directory(
+            args.input,
+            args.output,
+            platform=args.platform,
+            nproc=args.nproc,
+            prefix=args.prefix,
+            gpu_ids=gpu_ids,
+            include_het=args.include_het,
+        )

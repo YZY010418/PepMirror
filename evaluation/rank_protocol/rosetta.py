@@ -293,18 +293,24 @@ def calculate_rosetta_metrics(pdb_path, receptor_chain_ids, ligand_chain_ids, pa
             xml_objects = XmlObjects.create_from_file(local_xml, pose)
 
             record = {}
-            for filter_name in ("ddg", "ddg_norepack", "sc_metric", "buried_Hbonds"):
+            filter_names = ["sc_metric", "buried_Hbonds"]
+            if paths.get("with_rosetta_ddg", False):
+                filter_names.extend(["ddg", "ddg_norepack"])
+            for filter_name in filter_names:
                 add_filter_value(record, xml_objects, pose, filter_name)
             if not paths.get("skip_ec", False):
                 add_simple_metric_value(record, xml_objects, pose, "ec_metric")
             else:
                 record["ec_metric"] = ""
 
-            return make_pickle_safe({
-                "rosetta_ddg": metric_value(record, ["ddg"]),
-                "rosetta_ddg_norepack": metric_value(record, ["ddg_norepack"]),
+            result = {
                 "sc": metric_value(record, ["sc_metric"]),
                 "ec": extract_avg_metric(metric_value(record, ["ec_metric"])),
                 "buried_Hbonds": metric_value(record, ["buried_Hbonds"]),
-            })
-
+            }
+            if paths.get("with_rosetta_ddg", False):
+                result.update({
+                    "rosetta_ddg": metric_value(record, ["ddg"]),
+                    "rosetta_ddg_norepack": metric_value(record, ["ddg_norepack"]),
+                })
+            return make_pickle_safe(result)

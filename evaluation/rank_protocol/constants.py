@@ -22,8 +22,6 @@ OUTPUT_COLUMNS = [
     "pdb_name",
     "absBSA",
     "relBSA",
-    "rosetta_ddg",
-    "rosetta_ddg_norepack",
     "vina score",
     "sc",
     "ec",
@@ -32,6 +30,11 @@ OUTPUT_COLUMNS = [
     "num(H_bonds)",
     "num(mainchain_Hbonds)",
     "hotspot_occupoed weighted",
+]
+
+ROSETTA_DDG_COLUMNS = [
+    "rosetta_ddg",
+    "rosetta_ddg_norepack",
 ]
 
 ERROR_COLUMNS = ["pdb_name", "input_path", "errors"]
