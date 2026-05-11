@@ -23,8 +23,6 @@ except:
 class AxialFeatureConstructor(nn.Module):
     def __init__(self, axial_type='cross'):
         super().__init__()
-        self.axial_type = axial_type
-        
         if axial_type == 'cross':
             self.out_type = 'vector'
             self.out_mul = 2
@@ -41,7 +39,7 @@ class AxialFeatureConstructor(nn.Module):
             self.out_type = 'vector'
             self.out_mul = 2
             self._construct = self._construct_commutator
-        elif axial_type == 'threemix':
+        elif axial_type == 'cross_triple_projection_commutator':
             self.out_type = 'vector'
             self.out_mul = 4
             self._construct = self._construct_threemix
@@ -72,6 +70,9 @@ class AxialFeatureConstructor(nn.Module):
         triple_product = (cross * norm_channelswarp_2).sum(dim=-2, keepdim=True) 
         projection = triple_product * norm_channelswarp_2 
         return projection
+
+    def _construct_triple(self, V):
+        return self._construct_triple_projection(V)
 
     def _construct_triple_scalar(self, V):
         D = V.shape[-1] 

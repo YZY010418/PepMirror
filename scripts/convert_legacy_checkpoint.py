@@ -77,7 +77,7 @@ def infer_axial_setting(path):
         return axial_type, axial_position
 
     if 'cross_triple_projection_commutator' in name:
-        axial_type = 'threemix'
+        axial_type = 'cross_triple_projection_commutator'
     elif 'triple_scalar' in name:
         axial_type = 'triple_scalar'
     elif 'commutator' in name:
@@ -103,7 +103,7 @@ def infer_axial_type_from_module(module, fallback):
         return 'commutator'
     if hasattr(module, 'scale_after_cross'):
         in_features = getattr(module.scale_after_cross, 'in_features', None)
-        return 'threemix' if in_features is not None and in_features % module.d_hidden == 0 and in_features // module.d_hidden == 4 else 'cross'
+        return 'cross_triple_projection_commutator' if in_features is not None and in_features % module.d_hidden == 0 and in_features // module.d_hidden == 4 else 'cross'
     if hasattr(module, 'scale_after_triple'):
         in_features = getattr(module.scale_after_triple, 'in_features', None)
         if in_features == module.d_hidden * 2:

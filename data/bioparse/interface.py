@@ -18,6 +18,16 @@ def add_cb(input_array):
     CB = np.around(-0.58273431*a + 0.56802827*b - 0.54067466*c + CA,3)
     return CB #np.array([N,CA,C,CB,O])
 
+# For treating Gly as D amino acid, for pocket consistancy bwtween L and D targets.
+def add_cb_D(input_array):
+    #from protein mpnn
+    #The virtual Cβ coordinates were calculated using ideal angle and bond length definitions: b = Cα - N, c = C - Cα, a = cross(b, c), Cβ = -0.58273431*a + 0.56802827*b - 0.54067466*c + Cα.
+    N,CA,C,O = input_array
+    b = CA - N
+    c = C - CA
+    a = - np.cross(b,c) # we change the sign here.
+    CB = np.around(-0.58273431*a + 0.56802827*b - 0.54067466*c + CA,3)
+    return CB #np.array([N,CA,C,CB,O])
 
 def _all_not_none(vals: List):
     if len(vals) == 0: return True

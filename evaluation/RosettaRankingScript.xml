@@ -1,0 +1,47 @@
+<ROSETTASCRIPTS>
+  <SCOREFXNS>
+    <ScoreFunction name="score" weights="ref2015"/>
+  </SCOREFXNS>
+
+  <RESIDUE_SELECTORS>
+    <Chain name="ReceptorChain" chains="1"/>
+    <Chain name="LigandChain" chains="2"/>
+    <Neighborhood name="AroundLigand" selector="LigandChain" distance="10.0" />
+    <And name="ReceptorEpitope" selectors="AroundLigand,ReceptorChain" />
+
+  </RESIDUE_SELECTORS>
+
+  <SIMPLE_METRICS>
+    <ElectrostaticComplementarityMetric name="ec_metric" residue_selector1="ReceptorChain" residue_selector2="LigandChain"/>
+    
+  </SIMPLE_METRICS>
+
+  <FILTERS>
+    <CavityVolume name="cav_vol" />
+    <ShapeComplementarity name="sc_metric" residue_selector1="ReceptorChain" residue_selector2="LigandChain" confidence="0"/>
+    <BuriedUnsatHbonds2 name="buried_Hbonds" jump_number="1" confidence="0"/>
+    <ExposedHydrophobics name="exposed_Hydrophobics" sasa_cutoff="20" threshold="-1" />
+    <Ddg name="ddg"  threshold="-25" jump="1" repeats="5" repack="1" confidence="0" scorefxn="score"/>
+    <Ddg name="ddg_norepack"  threshold="-25" jump="1" repeats="1" repack="0" confidence="0" scorefxn="score"/>
+  </FILTERS>
+
+  <MOVERS>
+    <FastRelax name="relax" scorefxn="score" >
+    <MoveMap name="movemap" bb="0" chi="0" jump="0" >
+        <ResidueSelector selector="ReceptorEpitope" chi="1" bb="0"/>
+        <ResidueSelector selector="LigandChain" chi="1" bb="1"/>
+    </MoveMap>
+</FastRelax>
+    <RunSimpleMetrics name="run_ec_metric" metrics="ec_metric"/>
+  </MOVERS>
+
+  <PROTOCOLS>
+    <Add filter_name="sc_metric"/>
+    <Add mover_name="run_ec_metric"/>
+    <Add filter_name="cav_vol"/>
+    <Add filter_name="buried_Hbonds"/>
+    <Add filter_name="exposed_Hydrophobics"/>
+    <Add filter_name="ddg"/>
+    <Add filter_name="ddg_norepack"/>
+  </PROTOCOLS>
+</ROSETTASCRIPTS>
