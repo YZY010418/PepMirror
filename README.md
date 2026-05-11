@@ -9,7 +9,7 @@
 First, clone this repo:
 
 ```bash
-git clone https://github.com/YZY010418/PepMirror.git
+git clone https://github.com/YZY010418/PepMirror.git --depth 1
 ```
 
 Then create an environment, we recommand you to use mamba to accelarate the process.
