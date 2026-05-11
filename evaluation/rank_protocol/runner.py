@@ -39,7 +39,10 @@ def process_one_pdb(task):
         row["_errors"].append(f"Vina: {exc}")
 
     try:
-        row.update(calculate_rosetta_metrics(pdb_path, receptor_chain_ids, ligand_chain_ids, paths))
+        rosetta_result = calculate_rosetta_metrics(pdb_path, receptor_chain_ids, ligand_chain_ids, paths)
+        for error in rosetta_result.pop("_rosetta_metric_errors", []):
+            row["_errors"].append(f"Rosetta metric: {error}")
+        row.update(rosetta_result)
     except Exception as exc:
         row["_errors"].append(f"Rosetta: {exc}")
 
@@ -58,4 +61,3 @@ def run_tasks(tasks, num_processors):
     order = {task[0]: i for i, task in enumerate(tasks)}
     results.sort(key=lambda row: order.get(row.get("_input_path"), 10**12))
     return results
-

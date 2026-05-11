@@ -41,6 +41,9 @@ else:
 
 def warn_missing_runtime_tools(paths):
     warnings_to_print = []
+    if paths.get("skip_ec", False):
+        print("[info] Rosetta EC/APBS is skipped; use --with_ec to fill the ec column.")
+
     for label, key in (("AutoDock Vina", "vina"), ("PLIP", "plip")):
         if not command_exists(paths[key]):
             warnings_to_print.append(

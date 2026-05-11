@@ -235,6 +235,15 @@ def add_simple_metric_value(record, xml_objects, pose, metric_name):
         record[f"_{metric_name}_error"] = str(exc).splitlines()[0] if str(exc) else "failed"
 
 
+def collect_metric_errors(record):
+    errors = []
+    for key, value in record.items():
+        if key.startswith("_") and key.endswith("_error") and value:
+            metric = key[1:-6]
+            errors.append(f"{metric}: {value}")
+    return errors
+
+
 def setup_interface_foldtree_by_chains(pose, receptor_chain_ids, ligand_chain_ids):
     """Define jump 1 as receptor-chain group versus ligand-chain group.
 
@@ -308,6 +317,9 @@ def calculate_rosetta_metrics(pdb_path, receptor_chain_ids, ligand_chain_ids, pa
                 "ec": extract_avg_metric(metric_value(record, ["ec_metric"])),
                 "buried_Hbonds": metric_value(record, ["buried_Hbonds"]),
             }
+            metric_errors = collect_metric_errors(record)
+            if metric_errors:
+                result["_rosetta_metric_errors"] = metric_errors
             if paths.get("with_rosetta_ddg", False):
                 result.update({
                     "rosetta_ddg": metric_value(record, ["ddg"]),
