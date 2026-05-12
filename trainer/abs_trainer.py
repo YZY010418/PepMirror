@@ -149,9 +149,9 @@ class Trainer:
                 t_iter.set_postfix(loss=loss.item(), version=self.version)
             self.global_step += 1
             if self.sched_freq == 'batch':
-                self.scheduler.step()
+                self._step_scheduler()
         if self.sched_freq == 'epoch':
-            self.scheduler.step()
+            self._step_scheduler()
         self._train_epoch_end(device)
     
     def _train_epoch_end(self, device):
@@ -177,6 +177,8 @@ class Trainer:
         
         # judge
         valid_metric = self._aggregate_val_metric(metric_arr)
+        if self.sched_freq == 'val_epoch':
+            self._step_scheduler(valid_metric)
         if self._is_main_proc():
             save_path = os.path.join(self.model_dir, f'epoch{self.epoch}_step{self.global_step}.ckpt')
             module_to_save = self.model.module if self.local_rank == 0 else self.model
@@ -198,6 +200,16 @@ class Trainer:
         self.writer_buffer = {}
         self._valid_epoch_end(device)
         self.model.train()
+
+    def _step_scheduler(self, metric=None):
+        if self.scheduler is None:
+            return
+        if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+            if metric is None:
+                raise ValueError('ReduceLROnPlateau scheduler requires a validation metric; set scheduler.frequency to val_epoch')
+            self.scheduler.step(metric)
+        else:
+            self.scheduler.step()
     
     def _valid_epoch_end(self, device):
         return
@@ -312,6 +324,10 @@ class Trainer:
         sched_cfg = deepcopy(self.config.scheduler)
         cls = getattr(torch.optim.lr_scheduler, sched_cfg.pop('class'))
         freq = sched_cfg.pop('frequency')
+        if freq not in {'batch', 'epoch', 'val_epoch'}:
+            raise ValueError(f'Unsupported scheduler frequency {freq!r}; use batch, epoch, or val_epoch')
+        if cls is torch.optim.lr_scheduler.ReduceLROnPlateau and freq != 'val_epoch':
+            raise ValueError('ReduceLROnPlateau requires scheduler.frequency: val_epoch')
         return {
             'scheduler': cls(optimizer, **sched_cfg),
             'frequency': freq # batch/epoch/val_epoch
