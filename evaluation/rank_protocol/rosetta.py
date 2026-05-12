@@ -21,11 +21,10 @@ from .common import (
 _PYROSETTA_INITIALIZED = False
 
 
-def patch_rosetta_xml(xml_path, output_xml_path, receptor_chain_ids, ligand_chain_ids, ddg_repeats=1):
-    """Patch RosettaScripts XML for chain IDs and the requested DDG repeat count."""
+def patch_rosetta_xml(xml_path, output_xml_path, receptor_chain_ids, ligand_chain_ids):
+    """Patch RosettaScripts XML for the requested receptor and ligand chain IDs."""
     receptor_chain_ids = parse_chain_ids(receptor_chain_ids, "receptor chain IDs")
     ligand_chain_ids = parse_chain_ids(ligand_chain_ids, "ligand chain IDs")
-    ddg_repeats = max(1, int(ddg_repeats))
 
     tree = ET.parse(xml_path)
     root = tree.getroot()
@@ -46,10 +45,6 @@ def patch_rosetta_xml(xml_path, output_xml_path, receptor_chain_ids, ligand_chai
             "Rosetta XML must contain Chain selectors named "
             "'ReceptorChain' and 'LigandChain'"
         )
-
-    for node in root.findall(".//Ddg"):
-        if node.attrib.get("name") == "ddg":
-            node.set("repeats", str(ddg_repeats))
 
     tree.write(output_xml_path, encoding="unicode")
 
@@ -247,10 +242,10 @@ def collect_metric_errors(record):
 def setup_interface_foldtree_by_chains(pose, receptor_chain_ids, ligand_chain_ids):
     """Define jump 1 as receptor-chain group versus ligand-chain group.
 
-    Rosetta filters such as Ddg(jump=1) and BuriedUnsatHbonds2(jump_number=1)
-    are jump-based, not selector-based. For multichain systems, explicitly set
-    the FoldTree so jump 1 corresponds to the user-specified chain groups, e.g.
-    receptor A,C and ligand B -> partners string "AC_B".
+    BuriedUnsatHbonds2(jump_number=1) is jump-based, not selector-based. For
+    multichain systems, explicitly set the FoldTree so jump 1 corresponds to
+    the user-specified chain groups, e.g. receptor A,C and ligand B -> partners
+    string "AC_B".
     """
     receptor_chain_ids = parse_chain_ids(receptor_chain_ids, "receptor chain IDs")
     ligand_chain_ids = parse_chain_ids(ligand_chain_ids, "ligand chain IDs")
@@ -288,23 +283,18 @@ def calculate_rosetta_metrics(pdb_path, receptor_chain_ids, ligand_chain_ids, pa
             # Keep only the user-selected receptor and ligand chains, but preserve
             # their original PDB chain IDs. The XML is patched accordingly below.
             write_ordered_chain_pdb(source_pdb, local_pdb, receptor_chain_ids, ligand_chain_ids)
-            patch_rosetta_xml(
-                paths["rosetta_xml"], local_xml, receptor_chain_ids, ligand_chain_ids,
-                ddg_repeats=paths.get("rosetta_ddg_repeats", 1),
-            )
+            patch_rosetta_xml(paths["rosetta_xml"], local_xml, receptor_chain_ids, ligand_chain_ids)
 
             pose = pyrosetta.pose_from_pdb(local_pdb)
             setup_interface_foldtree_by_chains(pose, receptor_chain_ids, ligand_chain_ids)
 
             # Parse the XML but do not run the full ParsedProtocol. We only need the
-            # five reported metrics, and explicit calculation avoids unsafe access to
-            # pose extra scores as well as non-pickleable PyRosetta cache objects.
+            # reported ranking metrics, and explicit calculation avoids unsafe access
+            # to pose extra scores as well as non-pickleable PyRosetta cache objects.
             xml_objects = XmlObjects.create_from_file(local_xml, pose)
 
             record = {}
             filter_names = ["sc_metric", "buried_Hbonds"]
-            if paths.get("with_rosetta_ddg", False):
-                filter_names.extend(["ddg", "ddg_norepack"])
             for filter_name in filter_names:
                 add_filter_value(record, xml_objects, pose, filter_name)
             if not paths.get("skip_ec", False):
@@ -321,9 +311,4 @@ def calculate_rosetta_metrics(pdb_path, receptor_chain_ids, ligand_chain_ids, pa
             metric_errors = collect_metric_errors(record)
             if metric_errors:
                 result["_rosetta_metric_errors"] = metric_errors
-            if paths.get("with_rosetta_ddg", False):
-                result.update({
-                    "rosetta_ddg": metric_value(record, ["ddg"]),
-                    "rosetta_ddg_norepack": metric_value(record, ["ddg_norepack"]),
-                })
             return make_pickle_safe(result)

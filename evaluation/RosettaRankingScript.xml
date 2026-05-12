@@ -21,8 +21,6 @@
     <ShapeComplementarity name="sc_metric" residue_selector1="ReceptorChain" residue_selector2="LigandChain" confidence="0"/>
     <BuriedUnsatHbonds2 name="buried_Hbonds" jump_number="1" confidence="0"/>
     <ExposedHydrophobics name="exposed_Hydrophobics" sasa_cutoff="20" threshold="-1" />
-    <Ddg name="ddg"  threshold="-25" jump="1" repeats="5" repack="1" confidence="0" scorefxn="score"/>
-    <Ddg name="ddg_norepack"  threshold="-25" jump="1" repeats="1" repack="0" confidence="0" scorefxn="score"/>
   </FILTERS>
 
   <MOVERS>
@@ -41,7 +39,5 @@
     <Add filter_name="cav_vol"/>
     <Add filter_name="buried_Hbonds"/>
     <Add filter_name="exposed_Hydrophobics"/>
-    <Add filter_name="ddg"/>
-    <Add filter_name="ddg_norepack"/>
   </PROTOCOLS>
 </ROSETTASCRIPTS>

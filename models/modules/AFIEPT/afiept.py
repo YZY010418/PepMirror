@@ -54,39 +54,32 @@ class AxialFeatureConstructor(nn.Module):
         return V
     
     def _construct_cross(self, V):
-        D = V.shape[-1] 
-        channelswarp_1 = V[...,list(range(1,D))+[0]] 
+        channelswarp_1 = torch.roll(V, shifts=-1, dims=-1)
         norm_channelswarp_1 = channelswarp_1 / (channelswarp_1.norm(dim=-2, keepdim=True) + 1e-5) 
         cross = torch.cross(V, norm_channelswarp_1, dim=-2) 
         return cross
     
     def _construct_triple_projection(self, V):
-        D = V.shape[-1] 
-        channelswarp_1 = V[...,list(range(1,D))+[0]] 
+        channelswarp_1 = torch.roll(V, shifts=-1, dims=-1)
         norm_channelswarp_1 = channelswarp_1 / (channelswarp_1.norm(dim=-2, keepdim=True) + 1e-5) 
-        channelswarp_2 = V[...,list(range(2,D))+[0,1]]
+        channelswarp_2 = torch.roll(V, shifts=-2, dims=-1)
         norm_channelswarp_2 = channelswarp_2 / (channelswarp_2.norm(dim=-2, keepdim=True) + 1e-5) 
         cross = torch.cross(V, norm_channelswarp_1, dim=-2) 
         triple_product = (cross * norm_channelswarp_2).sum(dim=-2, keepdim=True) 
         projection = triple_product * norm_channelswarp_2 
         return projection
 
-    def _construct_triple(self, V):
-        return self._construct_triple_projection(V)
-
     def _construct_triple_scalar(self, V):
-        D = V.shape[-1] 
-        channelswarp_1 = V[...,list(range(1,D))+[0]] 
+        channelswarp_1 = torch.roll(V, shifts=-1, dims=-1)
         norm_channelswarp_1 = channelswarp_1 / (channelswarp_1.norm(dim=-2, keepdim=True) + 1e-5) 
-        channelswarp_2 = V[...,list(range(2,D))+[0,1]]
+        channelswarp_2 = torch.roll(V, shifts=-2, dims=-1)
         norm_channelswarp_2 = channelswarp_2 / (channelswarp_2.norm(dim=-2, keepdim=True) + 1e-5) 
         cross = torch.cross(V, norm_channelswarp_1, dim=-2) 
         triple_product = (cross * norm_channelswarp_2).sum(dim=-2, keepdim=False) # To concate with H
         return triple_product
     
     def _construct_commutator(self, V):
-        D = V.shape[-1] 
-        channelswarp_1 = V[...,list(range(1,D))+[0]] 
+        channelswarp_1 = torch.roll(V, shifts=-1, dims=-1)
         norm_channelswarp_1 = channelswarp_1 / (channelswarp_1.norm(dim=-2, keepdim=True) + 1e-5) 
         norm_V = V / (V.norm(dim=-2, keepdim=True) + 1e-5)
         dot = (norm_V * norm_channelswarp_1).sum(dim=-2, keepdim=True)
@@ -95,9 +88,8 @@ class AxialFeatureConstructor(nn.Module):
         return commutator
 
     def _construct_threemix(self, V):
-        D = V.shape[-1] 
-        channelswarp_1 = V[...,list(range(1,D))+[0]]
-        channelswarp_2 = V[...,list(range(2,D))+[0,1]]
+        channelswarp_1 = torch.roll(V, shifts=-1, dims=-1)
+        channelswarp_2 = torch.roll(V, shifts=-2, dims=-1)
         norm_channelswarp_1 = channelswarp_1 / (channelswarp_1.norm(dim=-2, keepdim=True) + 1e-5)
         norm_channelswarp_2 = channelswarp_2 / (channelswarp_2.norm(dim=-2, keepdim=True) + 1e-5)
         norm_V = V / (V.norm(dim=-2, keepdim=True) + 1e-5)

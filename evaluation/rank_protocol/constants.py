@@ -32,9 +32,4 @@ OUTPUT_COLUMNS = [
     "hotspot_occupoed weighted",
 ]
 
-ROSETTA_DDG_COLUMNS = [
-    "rosetta_ddg",
-    "rosetta_ddg_norepack",
-]
-
 ERROR_COLUMNS = ["pdb_name", "input_path", "errors"]
