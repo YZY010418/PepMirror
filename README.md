@@ -89,7 +89,7 @@ Then we can run generation by:
 python -m api.generate --config path/to/config.yaml --save_dir path/to/output/dir --gpu 0 --ckpt ./checkpoints/pepmirror_cross_both_v1.ckpt 
 ```
 
-*If you don't have a reference binder* (only a receptor structure), we suggest you to mannually add an atom with an atom name of CB, such as:
+***If you don't have a reference binder*** (only a receptor structure), we suggest you to mannually add an atom with an atom name of CB, such as:
 
 ```text
 ATOM    117  CB  CEN L  89      98.937 124.782 150.267  1.00117.59      A    C  
@@ -98,7 +98,7 @@ ATOM    117  CB  CEN L  89      98.937 124.782 150.267  1.00117.59      A    C
 The model will define pockets based on the 10A radius ball around this atom. We recommand you to first generate about 10 designs using this virtual atom center, and select one designed complex as the input for larger-scale generation, in order to align with a pocket shape of peptides, and avoid missing possible interaction residues.
 
 
-*For setting axial feature configurations*, you may specify the type of axial features and the position where axial features are introduced by setting
+***For setting axial feature configurations***, you may specify the type of axial features and the position where axial features are introduced by setting
 
 ```yaml
 axial_type: cross # choose from cross, triple_projection, commutator, triple_scalar, cross_triple_projection_commutator, and Polar if you don't want to inject axial features
@@ -120,7 +120,7 @@ or using the `--ckpt` argument to specify a checkpoint for certain configuration
 | cross_triple_projection_commutator | ✓    |     |     |
 | polar                              | --   | --  | --  |
 
-*For D-peptide binder design*, what we do is to first get the enantiomer of the target, generate designs consist of L-residues torwards this enantiomer, and get the enantiomer of the resulting complexes. The process can be done by:
+***For D-peptide binder design***, what we do is to first get the enantiomer of the target, generate designs consist of L-residues torwards this enantiomer, and get the enantiomer of the resulting complexes. The process can be done by:
 
 ```bash
 python scripts/mirror_pdb.py -i pdbs_L -o pdbs_D
