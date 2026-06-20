@@ -30,8 +30,8 @@ unzip ./checkpoints/checkpoints.zip -d ./checkpoints/
 If you want to replicate our ranking protocol, you may also install the following tools and packages.
 
 ```bash
-# Activate the CPMirror environment first
-conda activate CPMirror
+# Activate the PepMirror environment first
+conda activate PepMirror
 
 # Install FreeSASA, PLIP, AutoDock Vina, APBS, and MGLtools
 mamba install -y -c conda-forge freesasa plip vina apbs --channel-priority flexible
