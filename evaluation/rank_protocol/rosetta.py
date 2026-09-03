@@ -21,6 +21,96 @@ from .common import (
 _PYROSETTA_INITIALIZED = False
 
 
+# Rosetta's canonical D-amino-acid name3 values. These are the names assigned
+# by the D_AA patch's CHIRAL_FLIP_NAMING operation, not four-character PDB
+# residue names. Glycine is achiral and therefore remains GLY.
+L_TO_ROSETTA_D_NAME3 = {
+    "ALA": "DAL",
+    "CYS": "DCS",
+    "ASP": "DAS",
+    "GLU": "DGU",
+    "PHE": "DPH",
+    "HIS": "DHI",
+    "ILE": "DIL",
+    "LYS": "DLY",
+    "LEU": "DLE",
+    "MET": "DME",
+    "ASN": "DAN",
+    "PRO": "DPR",
+    "GLN": "DGN",
+    "ARG": "DAR",
+    "SER": "DSE",
+    "THR": "DTH",
+    "VAL": "DVA",
+    "TRP": "DTR",
+    "TYR": "DTY",
+    "GLY": "GLY",
+}
+
+# PDB Chemical Component Dictionary names that differ from Rosetta's D-residue
+# name3 values. Normalize them explicitly rather than relying on Rosetta's
+# default.codes; release-371 incorrectly maps DSG (D-Asn) to DAS (D-Asp).
+PDB_D_ALIAS_TO_ROSETTA_D_NAME3 = {
+    "DCY": "DCS",
+    "DGL": "DGU",
+    "DPN": "DPH",
+    "MED": "DME",
+    "DSG": "DAN",
+    "DSN": "DSE",
+}
+
+ROSETTA_D_TO_L_NAME3 = {
+    d_name3: l_name3
+    for l_name3, d_name3 in L_TO_ROSETTA_D_NAME3.items()
+    if l_name3 != "GLY"
+}
+PDB_D_ALIAS_TO_L_NAME3 = {
+    pdb_alias: ROSETTA_D_TO_L_NAME3[d_name3]
+    for pdb_alias, d_name3 in PDB_D_ALIAS_TO_ROSETTA_D_NAME3.items()
+}
+
+
+def write_rosetta_ligand_chirality_pdb(
+    input_pdb, output_pdb, ligand_chain_ids, chirality="D"
+):
+    """Write a Rosetta-only PDB with canonical ligand residue names corrected.
+
+    PepMirror coordinates describe D-peptides while its PDB files retain the
+    conventional L-amino-acid residue names. For Rosetta calculations, replace
+    those names with Rosetta's three-character D residue names. The caller uses
+    a temporary output file, so non-Rosetta metrics and the source PDB remain
+    unchanged.
+    """
+    ligand_chain_ids = set(parse_chain_ids(ligand_chain_ids, "ligand chain IDs"))
+    chirality = str(chirality).upper()
+    if chirality not in {"D", "L"}:
+        raise ValueError(f"Rosetta ligand chirality must be D or L, got {chirality!r}")
+
+    if chirality == "D":
+        residue_name_map = {
+            **L_TO_ROSETTA_D_NAME3,
+            **PDB_D_ALIAS_TO_ROSETTA_D_NAME3,
+        }
+    else:
+        residue_name_map = {
+            **ROSETTA_D_TO_L_NAME3,
+            **PDB_D_ALIAS_TO_L_NAME3,
+        }
+
+    with open(input_pdb) as source, open(output_pdb, "w") as destination:
+        for line in source:
+            if (
+                line.startswith(("ATOM  ", "HETATM"))
+                and len(line) > 21
+                and line[21] in ligand_chain_ids
+            ):
+                residue_name = line[17:20].strip()
+                target_name3 = residue_name_map.get(residue_name)
+                if target_name3 is not None:
+                    line = line[:17] + f"{target_name3:>3s}" + line[20:]
+            destination.write(line)
+
+
 def patch_rosetta_xml(xml_path, output_xml_path, receptor_chain_ids, ligand_chain_ids):
     """Patch RosettaScripts XML for the requested receptor and ligand chain IDs."""
     receptor_chain_ids = parse_chain_ids(receptor_chain_ids, "receptor chain IDs")
@@ -275,14 +365,21 @@ def calculate_rosetta_metrics(pdb_path, receptor_chain_ids, ligand_chain_ids, pa
 
         with tempfile.TemporaryDirectory(prefix="rank_pyrosetta_") as tmp_dir:
             base = pdb_name(pdb_path)
-            local_pdb = os.path.join(tmp_dir, f"{base}_selected.pdb")
+            selected_pdb = os.path.join(tmp_dir, f"{base}_selected.pdb")
+            local_pdb = os.path.join(tmp_dir, f"{base}_rosetta.pdb")
             source_pdb = os.path.join(tmp_dir, f"{base}.pdb")
             local_xml = os.path.join(tmp_dir, "rosetta_chainids.xml")
             copy_or_unzip_pdb(pdb_path, source_pdb)
 
             # Keep only the user-selected receptor and ligand chains, but preserve
             # their original PDB chain IDs. The XML is patched accordingly below.
-            write_ordered_chain_pdb(source_pdb, local_pdb, receptor_chain_ids, ligand_chain_ids)
+            write_ordered_chain_pdb(source_pdb, selected_pdb, receptor_chain_ids, ligand_chain_ids)
+            write_rosetta_ligand_chirality_pdb(
+                selected_pdb,
+                local_pdb,
+                ligand_chain_ids,
+                paths.get("rosetta_ligand_chirality", "D"),
+            )
             patch_rosetta_xml(paths["rosetta_xml"], local_xml, receptor_chain_ids, ligand_chain_ids)
 
             pose = pyrosetta.pose_from_pdb(local_pdb)

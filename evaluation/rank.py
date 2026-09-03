@@ -145,6 +145,16 @@ def build_parser(show_advanced=False):
                                help=help_text(show_advanced, "show APBS stdout/stderr during EC calculation; muted by default"))
     rosetta_group.add_argument("--skip_ec", action="store_true",
                                help=help_text(show_advanced, "skip Rosetta ElectrostaticComplementarityMetric/APBS and leave ec blank"))
+    rosetta_group.add_argument(
+        "--rosetta_ligand_chirality",
+        choices=["D", "L"],
+        default="D",
+        help=help_text(
+            show_advanced,
+            "chirality assigned to canonical ligand residues in Rosetta's private PDB copy; "
+            "default D for PepMirror outputs",
+        ),
+    )
     
     # Some path settings
     path_group = parser.add_argument_group("Path settings")
@@ -189,6 +199,7 @@ def main():
         "quiet_rosetta": not args.show_rosetta_log,
         "quiet_apbs": not args.show_apbs_log,
         "skip_ec": args.skip_ec,
+        "rosetta_ligand_chirality": args.rosetta_ligand_chirality,
         "rosetta_xml": resolve_rosetta_xml_path(args.rosetta_xml),
         "plip": args.plip_path,
         "plip_count_mode": args.plip_count_mode or "combined",
