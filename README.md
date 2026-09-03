@@ -2,6 +2,8 @@
 
 😊 Hi, this is **PepMirror**, a generative model for designed mirror-image D peptide binders towards protein targets. By constructing axial features and let them interact with polar features, we help the transformers to better understand the difference between different chirality, while preserves stable representations between enantiomers, enabling the stable homo-chiral generation and hetero-chiral interface design.
 
+**Correction to the Rosetta enantiomer analysis.** The Rosetta total-score and ddG discrepancy reported in our paper resulted from incorrect D-residue naming and the omission of `-score:symmetric_gly_tables`, rather than an intrinsic lack of reflection consistency in Rosetta. See [Issue #2](https://github.com/YZY010418/PepMirror/issues/2) for details.
+
 ## 📋 Installation
 
 First, clone this repo:
