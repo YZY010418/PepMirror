@@ -21,13 +21,17 @@ mamba env create -f environment..yaml --channel-priority flexible
 conda activate PepMirror
 ```
 
-If you want to use our pre-trained weights for generation, please download the corresponding ckpt and save them in `./checkpoints`. Generally speaking, we suggest to use the *commutator* as axial features in *both* GNN and FFN.
+To use our pre-trained weights for generation, download the corresponding `.ckpt` file from [Zenodo](https://zenodo.org/records/20095187) and save it in `./checkpoints`.
+
+We recommend using *commutator* axial features in both the GNN and FFN. Download the recommended checkpoint with:
 
 ```bash
 mkdir -p checkpoints
-wget 'https://zenodo.org/api/records/20095187/files-archive' -O ./checkpoints/checkpoints.zip
-unzip ./checkpoints/checkpoints.zip -d ./checkpoints/
+wget -c 'https://zenodo.org/api/records/20095187/files/pepmirror_commutator_both_v1.ckpt/content' \
+  -O ./checkpoints/pepmirror_commutator_both_v1.ckpt
 ```
+
+For other model variants, download the corresponding `.ckpt` files individually from the Zenodo record linked above.
 
 If you want to replicate our ranking protocol, you may also install the following tools and packages.
 
